@@ -1,0 +1,218 @@
+select
+	"Restaurant_ID",
+	round(avg("Overall_Rating"),
+	2) Overall_Rating,
+	round(avg("Food_Rating"),
+	2) Food_Rating,
+	round(avg("Service_Rating"),
+	2) Service_Rating,
+	count("Restaurant_ID") mark_cnt
+from
+	public.ratings
+group by
+	"Restaurant_ID"
+order by
+	Overall_Rating desc,
+	Food_Rating desc ,
+	Service_Rating desc
+
+with a as(select distinct "Consumer_ID", "Restaurant_ID"  from public.ratings)
+select count(*) from a
+
+select count(*) from public.ratings  --no duplicates
+
+with pref_cuis as (
+    select distinct r.*, c."Preferred_Cuisine", rc."Cuisine"
+    from public.ratings r
+    left join public.consumer_preferences c on r."Consumer_ID" = c."Consumer_ID"
+    left join public.restaurant_cuisines rc on rc."Restaurant_ID" = r."Restaurant_ID"
+   ),
+mtched_cuis as (
+    select *, case when "Preferred_Cuisine" = "Cuisine" then 1 else 0 end as mtch
+    from pref_cuis
+)
+select 'yes' as mtch, 
+	   round(avg("Overall_Rating"),3) as avg_overall_rating, 
+       round(avg("Food_Rating"),3) as avg_food_rating, 
+       round(avg("Service_Rating"),3) as avg_service_rating
+from mtched_cuis
+where mtch = 1
+union all
+select 'no' as mtch, 
+	   round(avg("Overall_Rating"),3) as avg_overall_rating, 
+       round(avg("Food_Rating"),3) as avg_food_rating, 
+       round(avg("Service_Rating"),3) as avg_service_rating
+from mtched_cuis
+where mtch = 0
+
+with pref_cuis as (
+select
+	distinct r.*,
+	c."Preferred_Cuisine",
+	rc."Cuisine"
+from
+	public.ratings r
+left join public.consumer_preferences c on
+	r."Consumer_ID" = c."Consumer_ID"
+left join public.restaurant_cuisines rc on
+	rc."Restaurant_ID" = r."Restaurant_ID"
+   ),
+ ag_gr as(
+select
+	"Consumer_ID",
+	case
+		when "Age"<25 then 'young'
+		when "Age"<40 then 'middle-age'
+		else 'old'
+	end as age_group
+from
+	public.consumers c),
+ft as(
+select
+	*
+from
+	pref_cuis p
+join public.consumers c on
+	p."Consumer_ID" = c."Consumer_ID"
+join ag_gr a on
+	a."Consumer_ID" = p."Consumer_ID")
+select
+	"Restaurant_ID",
+	age_group,
+	count(age_group)
+from
+	ft
+group by
+	"Restaurant_ID",
+	age_group
+order by
+	"Restaurant_ID",
+	age_group
+	--there are some restraunts where more cunsomers in old or middle-age group, but in the most young group is the greatest even not propotionally
+
+select
+	r."Restaurant_ID",
+	rc."Cuisine",
+	cp."Preferred_Cuisine"
+from
+	public.restaurants r
+join public.restaurant_cuisines rc on
+	r."Restaurant_ID" = rc."Restaurant_ID"
+join ratings r2 on
+	r2."Restaurant_ID" = r."Restaurant_ID"
+join consumer_preferences cp on
+	r2."Consumer_ID" = cp."Consumer_ID"
+order by
+	"Restaurant_ID" 
+
+with cs as(
+	select
+		"Cuisine",
+		count("Cuisine") cuisine_cnt
+	from
+		restaurant_cuisines rc
+	group by
+		"Cuisine"
+	order by
+		cuisine_cnt desc),
+	pr_cs as(
+	select
+		"Preferred_Cuisine",
+		count("Preferred_Cuisine") preffered_cnt
+	from
+		consumer_preferences cp
+	group by
+		"Preferred_Cuisine"
+	order by
+		preffered_cnt desc),
+	w_diff as(
+	select
+		cs.*,
+		pr_cs.preffered_cnt
+	from
+		cs
+	join pr_cs on
+		cs."Cuisine" = pr_cs."Preferred_Cuisine")
+select
+	*,
+	round(cuisine_cnt * 1.0 / preffered_cnt,
+	2) as shops_per_person
+from
+	w_diff
+order by
+	shops_per_person    
+
+with res_cnt as(
+	select
+		"City" ,
+		count("City") res_cnt
+	from
+		public.restaurants r
+	group by
+		"City"),
+	con_cnt as(
+	select
+		"City" ,
+		count("City") con_cnt
+	from
+		consumers c
+	group by
+		"City")
+select
+	r.*,
+	c.con_cnt
+from
+	res_cnt r
+right join con_cnt c on
+	r."City" = c."City"
+	--equivalent
+
+with cuis_by_city as(
+	select
+		r."City" ,
+		"Cuisine",
+		count(rc."Cuisine") cnt_cuis
+	from
+		public.restaurants r
+	left join restaurant_cuisines rc on
+		r."Restaurant_ID" = rc."Restaurant_ID"
+	group by
+		"City",
+		"Cuisine"
+	order by
+		"City",
+		cnt_cuis desc),
+	con_by_city as(
+	select
+		c."City" ,
+		"Preferred_Cuisine",
+		count(cp."Preferred_Cuisine") cnt_cus
+	from
+		public.consumers c
+	left join consumer_preferences cp on
+		c."Consumer_ID" = cp."Consumer_ID"
+	group by
+		"City",
+		"Preferred_Cuisine"
+	order by
+		"City",
+		cnt_cus desc),
+	ct as(
+	select
+		coalesce(cb."City",
+		cc."City") City,
+		"Cuisine",
+		cnt_cus,
+		cnt_cuis
+	from
+		con_by_city cb
+	full join cuis_by_city cc on
+		cb."City" = cc."City"
+		and cb."Preferred_Cuisine" = cc."Cuisine")
+select
+	*,
+	round(cnt_cuis * 1.0 / cnt_cus,
+	2)
+from
+	ct
+	
